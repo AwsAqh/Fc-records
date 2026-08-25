@@ -162,6 +162,17 @@ body {
     display: none !important;
   }
 
+  /* ---- Smaller fonts overall: scale the rem base down on phones ---- */
+  html {
+    font-size: 13.5px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
   /* ---- Compact tables: smaller cells + font so they fit phones ---- */
   table th,
   table td {
@@ -187,10 +198,10 @@ body {
 
   /* Section headings above tables slightly smaller */
   h2 {
-    font-size: 19px !important;
+    font-size: 18px !important;
   }
   h3 {
-    font-size: 16px !important;
+    font-size: 15px !important;
   }
 
   /* Modal (player profile) takes nearly full width with tighter padding */
