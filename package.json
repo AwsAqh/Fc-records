@@ -2,7 +2,7 @@
   "name": "fc-record-web",
   "private": true,
   "version": "1.0.0",
-    "homepage": "https://awsaq.github.io/FC-record-web",
+    "homepage": "https://awsaqh.github.io/Fc-records",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
