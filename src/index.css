@@ -161,6 +161,45 @@ body {
   .desktop-only {
     display: none !important;
   }
+
+  /* ---- Compact tables: smaller cells + font so they fit phones ---- */
+  table th,
+  table td {
+    padding: 6px 6px !important;
+    font-size: 11px !important;
+    line-height: 1.35;
+  }
+
+  /* Large stat values inside cells scale down */
+  table td.text-base,
+  table th.text-base,
+  table .text-base {
+    font-size: 13px !important;
+  }
+
+  /* Tighter badges inside table cells */
+  table span[class*="px-2"],
+  table span[class*="px-2.5"],
+  table span[class*="px-3"] {
+    padding-left: 5px !important;
+    padding-right: 5px !important;
+  }
+
+  /* Section headings above tables slightly smaller */
+  h2 {
+    font-size: 19px !important;
+  }
+  h3 {
+    font-size: 16px !important;
+  }
+
+  /* Modal (player profile) takes nearly full width with tighter padding */
+  .modal-overlay {
+    padding: 8px !important;
+  }
+  .modal-overlay > div {
+    padding: 14px !important;
+  }
 }
 
 @media (min-width: 769px) {
