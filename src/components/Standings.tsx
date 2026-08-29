@@ -17,7 +17,7 @@ type TableFilter = 'all' | 'trophies' | 'friendlies';
 
 export const Standings: React.FC<StandingsProps> = ({ data, onSelectPlayer }) => {
   const [filter, setFilter] = useState<TableFilter>('all');
-  const [sortField, setSortField] = useState<'points' | 'winRate' | 'played' | 'wins' | 'trophies' | 'cards'>('points');
+  const [sortField, setSortField] = useState<'points' | 'winRate' | 'played' | 'wins' | 'trophies' | 'cards'>('winRate');
   const [sortDesc, setSortDesc] = useState(true);
 
   const getTableRows = () => {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { AppData, Player } from '../lib/types';
-import { computePlayerStats, getPlayerMatches, getPlayerWinsLosses } from '../lib/stats';
+import { AppData, Match, Player } from '../lib/types';
+import { computePlayerStats, getCompetitionMatches, getPlayerMatches, getPlayerWinsLosses } from '../lib/stats';
 import { X, Trophy, Swords, Users, ShieldAlert, Award, TrendingUp } from 'lucide-react';
 import { getPlayerImage } from '../lib/images';
 
@@ -11,13 +11,27 @@ interface PlayerModalProps {
   onSelectOtherPlayer: (player: Player) => void;
 }
 
+interface H2hItem {
+  otherPlayer: Player;
+  winsAgainst: number;
+  lossesAgainst: number;
+  totalAgainst: number;
+  winRateAgainst: number;
+  gamesTogether: number;
+  drawnTogether: number;
+  winsTogether: number;
+  lossesTogether: number;
+  totalTogether: number;
+  winRateTogether: number;
+}
+
 export const PlayerModal: React.FC<PlayerModalProps> = ({
   player,
   onClose,
   data,
   onSelectOtherPlayer,
 }) => {
-  const [activeTab, setActiveTab] = useState<'h2h' | 'partners' | 'matches'>('h2h');
+  const [activeTab, setActiveTab] = useState<'h2h' | 'trophyH2h' | 'partners' | 'matches'>('h2h');
 
   if (!player) return null;
 
@@ -28,64 +42,160 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
 
   const getPlayerName = (id: string) => data.players.find((p) => p.id === id)?.name ?? id;
 
-  // Compute Head-to-Head against all other players
-  const h2hList = data.players
-    .filter((p) => p.id !== player.id)
-    .map((otherPlayer) => {
-      let winsAgainst = 0;
-      let lossesAgainst = 0;
-            let gamesTogether = 0;
-      let winsTogether = 0;
-      let lossesTogether = 0;
-
-      data.matches.forEach((m) => {
-        const inTeam1 = m.team1.includes(player.id);
-        const inTeam2 = m.team2.includes(player.id);
-        if (!inTeam1 && !inTeam2) return;
-
-        const otherInTeam1 = m.team1.includes(otherPlayer.id);
-        const otherInTeam2 = m.team2.includes(otherPlayer.id);
-
-        // Played AGAINST each other
-        if ((inTeam1 && otherInTeam2) || (inTeam2 && otherInTeam1)) {
-          const won = (inTeam1 && m.winnerTeam === 1) || (inTeam2 && m.winnerTeam === 2);
-          if (won) winsAgainst++;
-          else lossesAgainst++;
-        }
-
-                // Played TOGETHER
-        if ((inTeam1 && otherInTeam1) || (inTeam2 && otherInTeam2)) {
-          gamesTogether++;
-          const won = (inTeam1 && m.winnerTeam === 1) || (inTeam2 && m.winnerTeam === 2);
-          if (won) winsTogether++;
-          else lossesTogether++;
-        }
-      });
-
-            const totalAgainst = winsAgainst + lossesAgainst;
-      const winRateAgainst = totalAgainst > 0 ? Math.round((winsAgainst / totalAgainst) * 100) : 0;
-      const totalTogether = winsTogether + lossesTogether;
-      const winRateTogether = totalTogether > 0 ? Math.round((winsTogether / totalTogether) * 100) : 0;
-
-      return {
-        otherPlayer,
-        winsAgainst,
-        lossesAgainst,
-        totalAgainst,
-        winRateAgainst,
-        gamesTogether,
-        winsTogether,
-        lossesTogether,
-        totalTogether,
-        winRateTogether,
-      };
+  // Count how many times the draw set this player together with another player
+  // as partners. Each draw counts ONCE, no matter how many games were played
+  // from it (e.g. semi-final + final = 1 time).
+  //  - allDrawCounts: every draw — competition draws + friendly draw sessions
+  //  - trophyDrawCounts: trophy/competition draws only
+  const makeBumpPair = (counts: Map<string, number>) => (team: string[]) => {
+    if (!team.includes(player.id)) return;
+    team.forEach((id) => {
+      if (id !== player.id) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+    });
+  };
+  const allDrawCounts = new Map<string, number>();
+  const trophyDrawCounts = new Map<string, number>();
+  const bumpAll = makeBumpPair(allDrawCounts);
+  const bumpTrophy = makeBumpPair(trophyDrawCounts);
+  // Competition (trophy) draws count for BOTH tabs
+  data.competitions.forEach((c) =>
+    (c.teams ?? []).forEach((team) => {
+      bumpAll(team);
+      bumpTrophy(team);
     })
-    .filter((item) => item.totalAgainst > 0 || item.gamesTogether > 0)
-    .sort((a, b) => b.totalAgainst - a.totalAgainst || b.winRateAgainst - a.winRateAgainst);
+  );
+  // Friendly random draw sessions count for the All Matches tab only
+  data.drawSessions.forEach((s) => {
+    if (s.accepted) (s.teams ?? []).forEach(bumpAll);
+  });
+
+  // Compute Head-to-Head against all other players (works for any subset of matches)
+  const computeH2hList = (matches: Match[], drawCounts: Map<string, number>): H2hItem[] =>
+    data.players
+      .filter((p) => p.id !== player.id)
+      .map((otherPlayer) => {
+        let winsAgainst = 0;
+        let lossesAgainst = 0;
+        let gamesTogether = 0;
+        let winsTogether = 0;
+        let lossesTogether = 0;
+
+        matches.forEach((m) => {
+          const inTeam1 = m.team1.includes(player.id);
+          const inTeam2 = m.team2.includes(player.id);
+          if (!inTeam1 && !inTeam2) return;
+
+          const otherInTeam1 = m.team1.includes(otherPlayer.id);
+          const otherInTeam2 = m.team2.includes(otherPlayer.id);
+
+          // Played AGAINST each other
+          if ((inTeam1 && otherInTeam2) || (inTeam2 && otherInTeam1)) {
+            const won = (inTeam1 && m.winnerTeam === 1) || (inTeam2 && m.winnerTeam === 2);
+            if (won) winsAgainst++;
+            else lossesAgainst++;
+          }
+
+          // Played TOGETHER
+          if ((inTeam1 && otherInTeam1) || (inTeam2 && otherInTeam2)) {
+            gamesTogether++;
+            const won = (inTeam1 && m.winnerTeam === 1) || (inTeam2 && m.winnerTeam === 2);
+            if (won) winsTogether++;
+            else lossesTogether++;
+          }
+        });
+
+        const totalAgainst = winsAgainst + lossesAgainst;
+        const winRateAgainst = totalAgainst > 0 ? Math.round((winsAgainst / totalAgainst) * 100) : 0;
+        const totalTogether = winsTogether + lossesTogether;
+        const winRateTogether = totalTogether > 0 ? Math.round((winsTogether / totalTogether) * 100) : 0;
+
+        return {
+          otherPlayer,
+          winsAgainst,
+          lossesAgainst,
+          totalAgainst,
+          winRateAgainst,
+          gamesTogether,
+          drawnTogether: drawCounts.get(otherPlayer.id) ?? 0,
+          winsTogether,
+          lossesTogether,
+          totalTogether,
+          winRateTogether,
+        };
+      })
+      .filter((item) => item.totalAgainst > 0 || item.gamesTogether > 0)
+      .sort((a, b) => b.totalAgainst - a.totalAgainst || b.winRateAgainst - a.winRateAgainst);
+
+  // All-matches records (all draws) vs trophy records (trophy draws only)
+  const h2hList = computeH2hList(data.matches, allDrawCounts);
+  const trophyH2hList = computeH2hList(getCompetitionMatches(data), trophyDrawCounts);
 
   // Cards count
   const yellowCards = (data.cards ?? []).filter((c) => c.playerId === player.id && c.type === 'yellow').length;
   const redCards = (data.cards ?? []).filter((c) => c.playerId === player.id && c.type === 'red').length;
+
+  const renderH2hTable = (list: H2hItem[], note: string, emptyText: string) => (
+    <div className="space-y-3">
+      <p className="text-[11px] text-slate-500 font-medium">{note}</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-white/10 text-xs font-bold uppercase text-slate-400 bg-slate-900/40">
+              <th className="py-3 px-3">vs / Partner Player</th>
+              <th className="py-3 px-3 text-center">vs Opponent (W - L)</th>
+              <th className="py-3 px-3 text-center">Win % vs Opponent</th>
+              <th className="py-3 px-3 text-center">Games Together</th>
+              <th className="py-3 px-3 text-center">Times Drawn Together</th>
+              <th className="py-3 px-3 text-center">As Partner (W - L)</th>
+              <th className="py-3 px-3 text-center">Win % as Partner</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5 text-sm">
+            {list.length === 0 && (
+              <tr>
+                <td colSpan={7} className="py-8 text-center text-sm text-slate-500">
+                  {emptyText}
+                </td>
+              </tr>
+            )}
+            {list.map((item) => (
+              <tr
+                key={item.otherPlayer.id}
+                onClick={() => onSelectOtherPlayer(item.otherPlayer)}
+                className="hover:bg-white/5 cursor-pointer transition-colors"
+              >
+                <td className="py-3 px-3 font-bold text-white flex items-center gap-2">
+                  {item.otherPlayer.name}
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="text-emerald-400 font-bold">{item.winsAgainst}W</span> -{' '}
+                  <span className="text-rose-400 font-bold">{item.lossesAgainst}L</span>
+                </td>
+                <td className="py-3 px-3 text-center font-extrabold text-cyan-400">
+                  {item.totalAgainst > 0 ? `${item.winRateAgainst}%` : '-'}
+                </td>
+                <td className="py-3 px-3 text-center text-slate-300 font-medium">
+                  {item.gamesTogether > 0 ? `${item.gamesTogether} games` : '-'}
+                </td>
+                <td className="py-3 px-3 text-center font-bold text-cyan-300">
+                  {item.drawnTogether > 0 ? item.drawnTogether : '-'}
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="text-emerald-400 font-bold">{item.winsTogether}W</span> -{' '}
+                  <span className="text-rose-400 font-bold">{item.lossesTogether}L</span>
+                </td>
+                <td className="py-3 px-3 text-center font-extrabold text-fuchsia-400">
+                  {item.totalTogether > 0 ? `${item.winRateTogether}%` : '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -190,7 +300,17 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Head-to-Head Records ({h2hList.length})
+            All Matches Records ({h2hList.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('trophyH2h')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeTab === 'trophyH2h'
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Trophy Records ({trophyH2hList.length})
           </button>
           <button
             onClick={() => setActiveTab('matches')}
@@ -205,57 +325,19 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
         </div>
 
         {/* Tab Contents */}
-        {activeTab === 'h2h' && (
-          <div className="space-y-3">
-            <p className="text-[11px] text-slate-500 font-medium">
-              Ordered by: total games vs opponent → win rate vs opponent
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-white/10 text-xs font-bold uppercase text-slate-400 bg-slate-900/40">
-                    <th className="py-3 px-3">vs / Partner Player</th>
-                    <th className="py-3 px-3 text-center">vs Opponent (W - L)</th>
-                    <th className="py-3 px-3 text-center">Win % vs Opponent</th>
-                    <th className="py-3 px-3 text-center">Games Together</th>
-                    <th className="py-3 px-3 text-center">As Partner (W - L)</th>
-                    <th className="py-3 px-3 text-center">Win % as Partner</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-sm">
-                  {h2hList.map((item) => (
-                    <tr
-                      key={item.otherPlayer.id}
-                      onClick={() => onSelectOtherPlayer(item.otherPlayer)}
-                      className="hover:bg-white/5 cursor-pointer transition-colors"
-                    >
-                      <td className="py-3 px-3 font-bold text-white flex items-center gap-2">
-                        {item.otherPlayer.name}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className="text-emerald-400 font-bold">{item.winsAgainst}W</span> -{' '}
-                        <span className="text-rose-400 font-bold">{item.lossesAgainst}L</span>
-                      </td>
-                      <td className="py-3 px-3 text-center font-extrabold text-cyan-400">
-                        {item.totalAgainst > 0 ? `${item.winRateAgainst}%` : '-'}
-                      </td>
-                      <td className="py-3 px-3 text-center text-slate-300 font-medium">
-                        {item.gamesTogether > 0 ? `${item.gamesTogether} games` : '-'}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className="text-emerald-400 font-bold">{item.winsTogether}W</span> -{' '}
-                        <span className="text-rose-400 font-bold">{item.lossesTogether}L</span>
-                      </td>
-                      <td className="py-3 px-3 text-center font-extrabold text-fuchsia-400">
-                        {item.totalTogether > 0 ? `${item.winRateTogether}%` : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {activeTab === 'h2h' &&
+          renderH2hTable(
+            h2hList,
+            'All matches (friendlies + trophies) · draw counts include friendly draw sessions · Ordered by: total games vs opponent → win rate vs opponent',
+            'No matches played yet.'
+          )}
+
+        {activeTab === 'trophyH2h' &&
+          renderH2hTable(
+            trophyH2hList,
+            'Trophy / competition matches and draws only · Ordered by: total games vs opponent → win rate vs opponent',
+            'No trophy (competition) matches played yet.'
+          )}
 
         {activeTab === 'matches' && (
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">

@@ -132,7 +132,7 @@ export function getPlayerPartnerStats(
 }
 
 const BASE_RATE = 65;
-const MIN_RATE = 45;
+const MIN_RATE = 35;
 const MAX_RATE = 99;
 const FORM_WINDOW = 5;
 
@@ -149,15 +149,15 @@ export function calculatePlayerRate(
 
   let rate = BASE_RATE;
 
-  // Recent form is the main driver (+3 per win, -3 per loss in last 5)
+  // Recent form nudges rating (+1.2 per win, -1.2 per loss in last 5)
   recentForm.forEach((result) => {
-    rate += result === 'W' ? 3 : -3;
+    rate += result === 'W' ? 1.2 : -1.2;
   });
 
-  // Overall record nudges rating when enough games played
+  // Overall record is the dominant factor when enough games played
   if (total >= 3) {
     const winRate = (wins / total) * 100;
-    rate += (winRate - 50) * 0.2;
+    rate += (winRate - 50) * 0.4;
   }
 
   // Trophy bonus
@@ -170,7 +170,10 @@ export function calculatePlayerRate(
   rate -= yellowCards * 1;
   rate -= redCards * 3;
 
-  return Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, rate)));
+  // Clamp to [MIN_RATE, MAX_RATE], then round to the nearest integer.
+  // Ratings are always whole numbers — no fractional ratings are ever returned.
+  const clamped = Math.min(MAX_RATE, Math.max(MIN_RATE, rate));
+  return Math.round(clamped);
 }
 
 export function computePlayerStats(player: Player, data: AppData): PlayerStats {
@@ -361,7 +364,8 @@ export function computeLeagueTable(
       };
     })
     .filter((row) => includeUnplayed || row.played > 0)
-    .sort((a, b) => b.points - a.points || b.winRate - a.winRate || b.wins - a.wins);
+    // Default ordering: win rate first, then matches played as tiebreaker, then wins
+    .sort((a, b) => b.winRate - a.winRate || b.played - a.played || b.wins - a.wins);
 }
 
 /** Get league table for trophy/competition matches only */
